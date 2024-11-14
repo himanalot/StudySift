@@ -673,8 +673,7 @@ Your data is **never shared** with third parties. All processing and data handli
 
 #### **6. User Rights**
 
-- **Access and Control:**
-  - **View Data:** You can view the data being used during your session.
+- **Control:**
   - **Disconnect Account:** You have the right to disconnect your Spotify account from Echo at any time, which will erase all associated data.
 
 - **How to Disconnect:**
