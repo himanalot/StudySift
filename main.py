@@ -11,9 +11,6 @@ import streamlit as st
 import threading
 import os
 from dotenv import load_dotenv
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 
 # Load environment variables from .env if present
 load_dotenv()
@@ -31,15 +28,8 @@ client_secret = st.secrets["spotify"]["SPOTIPY_CLIENT_SECRET"]
 # Access variables from the 'openai' section
 api_key = st.secrets["openai"]["GPT4_MINI_API_KEY"]
 
-# Access variables from the 'email' section
-smtp_server = st.secrets["email"]["smtp_server"]
-smtp_port = st.secrets["email"]["smtp_port"]
-smtp_username = st.secrets["email"]["smtp_username"]
-smtp_password = st.secrets["email"]["smtp_password"]
-recipient_email = st.secrets["email"]["recipient_email"]
-
 # Ensure the variables are loaded
-if not all([client_id, client_secret, api_key, smtp_server, smtp_port, smtp_username, smtp_password, recipient_email]):
+if not all([client_id, client_secret, api_key]):
     raise ValueError("Missing environment variables. Please set them in st.secrets.")
 
 # --------------------------- Custom Cache Handler --------------------------- #
@@ -556,28 +546,6 @@ def fetch_playlist_tracks(playlist_id, sample_size=10, sp=None):
         st.write(f"An unexpected error occurred while fetching playlist {playlist_id}: {e}")
     return track_ids
 
-def send_feedback(email_subject, email_message):
-    """
-    Sends feedback email to the specified recipient using SMTP.
-    """
-    try:
-        msg = MIMEMultipart()
-        msg['From'] = smtp_username
-        msg['To'] = recipient_email
-        msg['Subject'] = email_subject
-
-        msg.attach(MIMEText(email_message, 'plain'))
-
-        server = smtplib.SMTP(smtp_server, int(smtp_port))
-        server.starttls()
-        server.login(smtp_username, smtp_password)
-        text = msg.as_string()
-        server.sendmail(smtp_username, recipient_email, text)
-        server.quit()
-        st.success("Feedback sent successfully!")
-    except Exception as e:
-        st.error(f"Failed to send feedback: {e}")
-
 # --------------------------- Main Functionality --------------------------- #
 
 def main():
@@ -592,15 +560,6 @@ def main():
     mood = st.text_input("Desired Mood (e.g., Calm, Happy, Sad):")
     energy_level = st.selectbox("Energy Level:", ["Select", "Low", "Medium", "High"])
     additional_info = st.text_input("Additional Info or Preferences (optional):")
-
-    # Feedback Section
-    st.markdown("### Feedback")
-    feedback = st.text_area("We value your feedback! Let us know your thoughts or any issues you encountered.")
-    if st.button("Send Feedback"):
-        if feedback.strip() == "":
-            st.error("Please enter some feedback before sending.")
-        else:
-            send_feedback("Echo App Feedback", feedback)
 
     # Submit Button
     if st.button("Submit"):
