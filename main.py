@@ -11,25 +11,36 @@ import streamlit as st
 import threading
 import os
 from dotenv import load_dotenv
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
-# Debug: List available keys in st.secrets
-
+# Load environment variables from .env if present
+load_dotenv()
 
 # --------------------------- Configuration --------------------------- #
 
 SPOTIPY_REDIRECT_URI = 'https://studysift-jbyhh4glfowhcs8xszu9xr.streamlit.app'  # Or your deployed app URL
 
 GPT4_MINI_API_ENDPOINT = 'https://api.openai.com/v1/chat/completions'
-# Now you can access your variables
+
 # Access variables from the 'spotify' section
 client_id = st.secrets["spotify"]["SPOTIPY_CLIENT_ID"]
 client_secret = st.secrets["spotify"]["SPOTIPY_CLIENT_SECRET"]
 
 # Access variables from the 'openai' section
 api_key = st.secrets["openai"]["GPT4_MINI_API_KEY"]
+
+# Access variables from the 'email' section
+smtp_server = st.secrets["email"]["smtp_server"]
+smtp_port = st.secrets["email"]["smtp_port"]
+smtp_username = st.secrets["email"]["smtp_username"]
+smtp_password = st.secrets["email"]["smtp_password"]
+recipient_email = st.secrets["email"]["recipient_email"]
+
 # Ensure the variables are loaded
-if not all([client_id, client_secret, api_key]):
-    raise ValueError("Missing environment variables. Please set them in Render.")
+if not all([client_id, client_secret, api_key, smtp_server, smtp_port, smtp_username, smtp_password, recipient_email]):
+    raise ValueError("Missing environment variables. Please set them in st.secrets.")
 
 # --------------------------- Custom Cache Handler --------------------------- #
 
@@ -86,7 +97,7 @@ def authenticate_spotify():
                 new_query_params.pop('code', None)
                 st.query_params.from_dict(new_query_params)
 
-                st.rerun()  # Trigger a rerun to use the new token_info
+                st.experimental_rerun()  # Trigger a rerun to use the new token_info
             else:
                 st.error("Failed to obtain access token. Please try authorizing again.")
                 st.stop()
@@ -127,7 +138,7 @@ def authenticate_spotify():
 
 def call_gpt4_mini(prompt):
     """
-    Calls the GPT-4o Mini API with the provided prompt and returns the response.
+    Calls the GPT-4 Mini API with the provided prompt and returns the response.
     """
     global api_key
     headers = {
@@ -348,9 +359,9 @@ def determine_search_parameters(genre, mood, energy_level, additional_info):
     """
     prompt = f"""
 Based on the following user preferences:
-- Genre: {genre}
-- Mood: {mood}
-- Energy Level: {energy_level}
+- Genre: {genre if genre else 'None'}
+- Mood: {mood if mood else 'None'}
+- Energy Level: {energy_level if energy_level else 'None'}
 - Additional Info: {additional_info if additional_info else 'None'}
 
 Please provide a list of genres and artists that match these preferences.
@@ -377,9 +388,9 @@ Please provide a list of genres and artists that match these preferences.
         except (json.JSONDecodeError, TypeError) as e:
             st.write(f"Error parsing GPT-4o Mini response for search parameters: {e}")
             st.write("Raw GPT-4o Mini response:", response)
-            return [genre], []
+            return [genre] if genre else [], [mood] if mood else []
     else:
-        return [genre], []
+        return [genre] if genre else [], [mood] if mood else []
 
 def filter_playlists_with_model(playlists_info, diagnostic):
     """
@@ -545,6 +556,28 @@ def fetch_playlist_tracks(playlist_id, sample_size=10, sp=None):
         st.write(f"An unexpected error occurred while fetching playlist {playlist_id}: {e}")
     return track_ids
 
+def send_feedback(email_subject, email_message):
+    """
+    Sends feedback email to the specified recipient using SMTP.
+    """
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = smtp_username
+        msg['To'] = recipient_email
+        msg['Subject'] = email_subject
+
+        msg.attach(MIMEText(email_message, 'plain'))
+
+        server = smtplib.SMTP(smtp_server, int(smtp_port))
+        server.starttls()
+        server.login(smtp_username, smtp_password)
+        text = msg.as_string()
+        server.sendmail(smtp_username, recipient_email, text)
+        server.quit()
+        st.success("Feedback sent successfully!")
+    except Exception as e:
+        st.error(f"Failed to send feedback: {e}")
+
 # --------------------------- Main Functionality --------------------------- #
 
 def main():
@@ -554,34 +587,61 @@ def main():
     sp = authenticate_spotify()
 
     # Collect user inputs
+    st.markdown("### Enter your preferences (filling in **Genre**, **Mood**, and **Energy Level** is highly recommended):")
     genre = st.text_input("Preferred Genre (e.g., Rock, Pop):")
     mood = st.text_input("Desired Mood (e.g., Calm, Happy, Sad):")
-    energy_level = st.selectbox("Energy Level:", ["Low", "Medium", "High"])
+    energy_level = st.selectbox("Energy Level:", ["Select", "Low", "Medium", "High"])
     additional_info = st.text_input("Additional Info or Preferences (optional):")
 
+    # Feedback Section
+    st.markdown("### Feedback")
+    feedback = st.text_area("We value your feedback! Let us know your thoughts or any issues you encountered.")
+    if st.button("Send Feedback"):
+        if feedback.strip() == "":
+            st.error("Please enter some feedback before sending.")
+        else:
+            send_feedback("Echo App Feedback", feedback)
+
+    # Submit Button
     if st.button("Submit"):
-        if not genre or not mood or not energy_level:
-            st.error("Please fill in the required fields: Genre, Mood, and Energy Level.")
-            return
+        # Check if at least one of the first three fields is filled
+        if (not genre.strip()) and (not mood.strip()) and (energy_level == "Select"):
+            st.error("Please fill in at least one of the following fields: Genre, Mood, or Energy Level.")
+        else:
+            # Determine search parameters using GPT-4o Mini
+            ai_genres, ai_artists = determine_search_parameters(genre, mood, energy_level, additional_info)
+            if not ai_genres and not ai_artists:
+                st.error("No genres or artists suggested by GPT-4o Mini for searching.")
+                return
 
-        # Determine search parameters using GPT-4o Mini
-        ai_genres, ai_artists = determine_search_parameters(genre, mood, energy_level, additional_info)
-        if not ai_genres and not ai_artists:
-            st.error("No genres or artists suggested by GPT-4o Mini for searching.")
-            return
+            selected_genres = ai_genres
+            selected_artists = ai_artists
 
-        selected_genres = ai_genres
-        selected_artists = ai_artists
+            if not selected_genres and not selected_artists:
+                st.error("No genres or artists available for searching.")
+                return
 
-        if not selected_genres and not selected_artists:
-            st.error("No genres or artists available for searching.")
-            return
+            # Start processing
+            process_playlist_generation(
+                genre, mood, energy_level, additional_info,
+                selected_genres, selected_artists, sp
+            )
 
-        # Start processing
-        process_playlist_generation(
-            genre, mood, energy_level, additional_info,
-            selected_genres, selected_artists, sp
-        )
+    # Attribution Text
+    st.markdown("""
+    <style>
+    .footer {
+        position: fixed;
+        left: 0;
+        bottom: 0;
+        font-size: 12px;
+        color: grey;
+    }
+    </style>
+    <div class="footer">
+        Powered by <a href="https://www.spotify.com" target="_blank">Spotify</a>
+    </div>
+    """, unsafe_allow_html=True)
 
 def process_playlist_generation(
     genre,
@@ -662,12 +722,12 @@ def process_playlist_generation(
             return
 
         with st.spinner('Creating new playlist...'):
-            playlist_name = f"{genre} - {mood} - {energy_level} Energy"
+            playlist_name = f"{genre if genre else 'Various Genres'} - {mood if mood else 'Various Moods'} - {energy_level if energy_level != 'Select' else 'Various'} Energy"
             new_playlist_url = create_new_playlist(playlist_name, filtered_ids, sp)
 
         if new_playlist_url:
             total_time = time.time() - start_time
-            status_placeholder.success(f"New Playlist Created: [Open Playlist]({new_playlist_url})\nTotal time taken: {total_time:.2f} seconds")
+            st.success(f"New Playlist Created: [Open Playlist]({new_playlist_url}) (made with Spotify)\nTotal time taken: {total_time:.2f} seconds")
         else:
             st.error("Failed to create the new playlist.")
 
