@@ -559,7 +559,7 @@ def main():
     genre = st.text_input("Preferred Genre (e.g., Rock, Pop):")
     mood = st.text_input("Desired Mood (e.g., Calm, Happy, Sad):")
     energy_level = st.selectbox("Energy Level:", ["Select", "Low", "Medium", "High"])
-    additional_info = st.text_input("Additional Info or Preferences (optional):")
+    additional_info = st.text_input("Additional Info or Preferences:")
 
     # Submit Button
     if st.button("Submit"):
@@ -598,7 +598,7 @@ def main():
     }
     </style>
     <div class="footer">
-        Powered by <a href="https://www.spotify.com" target="_blank">Spotify</a>
+        Powered by <a href="https://www.spotify.com" target="_blank">Spotify API</a>
     </div>
     """, unsafe_allow_html=True)
 
@@ -686,7 +686,7 @@ def process_playlist_generation(
 
         if new_playlist_url:
             total_time = time.time() - start_time
-            st.success(f"New Playlist Created: [Open Playlist]({new_playlist_url}) (made with Spotify)\nTotal time taken: {total_time:.2f} seconds")
+            st.success(f"New Playlist Created: [Open Playlist]({new_playlist_url}) ([made with Spotify](https://www.spotify.com))\nTotal time taken: {total_time:.2f} seconds")
         else:
             st.error("Failed to create the new playlist.")
 
