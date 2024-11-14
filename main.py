@@ -86,7 +86,7 @@ def authenticate_spotify():
                 new_query_params.pop('code', None)
                 st.experimental_set_query_params(**new_query_params)
 
-                st.experimental_rerun()  # Trigger a rerun to use the new token_info
+                st.rerun()  # Trigger a rerun to use the new token_info
             else:
                 st.error("Failed to obtain access token. Please try authorizing again.")
                 st.stop()
